@@ -60,6 +60,8 @@ class Agent:
                     quit()
                 else:
                     continue
+        filename = f'{self.env_id}_{nsteps}.p'
+        self.archive.save(filename)
 
     def render_best(self):
         best_idv = self.archive.find_best()
@@ -75,9 +77,21 @@ class Agent:
         print(f'Best Fitness: {best_idv.fitness}')
 
 if __name__ == '__main__':
+    '''use this if train from scratch
+    '''
     archive = Archive([(0, 1, 0.1)] * 4)
+    ####################################
     num_cores = multiprocessing.cpu_count()
     agent = Agent(archive, num_cores)
+    ####################################
     agent.warmup(10)
     agent.evolve(10)
     agent.render_best()
+
+    '''use this if resume from previously trained archive
+    '''
+    # archive = Archive.from_pickle('QDAntBulletEnv-v0_500.p')
+    # num_cores = multiprocessing.cpu_count()
+    # agent = Agent(archive, num_cores)
+    # agent.evolve(10)
+    # agent.render_best()

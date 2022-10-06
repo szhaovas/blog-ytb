@@ -6,6 +6,7 @@ class Individual:
     max_possible_freq = pi
     def __init__(self, genome):
         self.bds = None
+        self.discretized_bds = None
         self.genome = genome
         self.fitness = float('-inf')
 
@@ -37,3 +38,10 @@ class Individual:
     @staticmethod
     def mutate(this, sigma1):
         return Individual(np.random.normal(this.genome, sigma1))
+
+    def __eq__(self, other):
+        return np.all(self.discretized_bds == other.discretized_bds)
+
+    def __hash__(self):
+        string = f"{['{:0.2f}'.format(i) for i in self.discretized_bds]}"
+        return hash(string)

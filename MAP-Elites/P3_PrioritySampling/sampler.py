@@ -23,3 +23,6 @@ class Sampler:
         self.individuals = np.array(sorted(self.individuals,
             key=lambda x: float('-inf') if x is None else x.fitness,
             reverse=True))
+
+    def best(self):
+        return self.individuals[0]

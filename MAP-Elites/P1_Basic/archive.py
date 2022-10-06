@@ -10,65 +10,41 @@ class Archive:
     dims: [(dim1_low, dim1_high, dim1_step) * len(dims)]
     '''
     def __init__(self, dims):
-        def archive_layer(dims):
-            if len(dims) > 1:
-                layer = {key:archive_layer(dims[1:]) for key in np.arange(dims[0][0], dims[0][1], dims[0][2])}
-            else:
-                layer = {key:None for key in np.arange(dims[0][0], dims[0][1], dims[0][2])}
-            return layer
-
-        self.archive = archive_layer(dims)
+        self.dims = [np.arange(d[0], d[1], d[2]) for d in dims]
+        self.archive = {}
 
     def add(self, individual):
-        layer = self.archive
-        for bd in individual.bds[:-1]:
-            key = discretize(bd, list(layer.keys()))
-            layer = layer[key]
+        discretized_bds = \
+            list(map(lambda bd, grid: discretize(bd, grid), individual.bds, self.dims))
+        individual.discretized_bds = discretized_bds
+        if (not individual in self.archive) or \
+            individual.fitness > self.archive[individual].fitness:
+            self.archive[individual] = individual
 
-        last_key = discretize(individual.bds[-1], list(layer.keys()))
-        if layer[last_key] is None or individual.fitness > layer[last_key].fitness:
-            layer[last_key] = individual
-
-    '''
-    might return None
-    '''
     def sample(self):
-        layer = self.archive
-        while isinstance(layer, dict):
-            key = choice(list(layer.keys()))
-            layer = layer[key]
-
-        return layer
+        return np.random.choice(list(self.archive.values()))
 
     def find_best(self):
+        max_fitness = float('-inf')
         best_idv = None
-        best_fitness = float('-inf')
-
-        def dfs(layer):
-            nonlocal best_idv, best_fitness
-            for key, value in layer.items():
-                if isinstance(value, dict):
-                    dfs(layer[key])
-                elif value is not None:
-                    if value.fitness > best_fitness:
-                        best_idv = value
-                        best_fitness = value.fitness
-
-        dfs(self.archive)
+        for idv in self.archive.values():
+            if idv.fitness > max_fitness:
+                max_fitness = idv.fitness
+                best_idv = idv
 
         return best_idv
 
     @staticmethod
     def visualize(archive2D):
-        dim1 = list(archive2D.archive.keys())
+        dim1 = archive2D.dims[0].tolist()
         dim1 += [dim1[-1]+dim1[-1]-dim1[-2]]
-        dim2 = list(list(archive2D.archive.values())[0].keys())
+        dim2 = archive2D.dims[1].tolist()
         dim2 += [dim2[-1]+dim2[-1]-dim2[-2]]
         fitness_mat = np.zeros((len(dim1), len(dim2)))
-        for dim1_count, layer in enumerate(archive2D.archive.values()):
-            for dim2_count, idv in enumerate(layer.values()):
-                if idv is not None:
-                    fitness_mat[dim1_count, dim2_count] = idv.fitness
+        for idv in archive2D.archive.values():
+            index1 = np.where(idv.discretized_bds[0] == archive2D.dims[0])[0]
+            index2 = np.where(idv.discretized_bds[1] == archive2D.dims[1])[0]
+            fitness_mat[index1, index2] = idv.fitness
 
         z_min = np.min(fitness_mat)
         z_max = max(np.max(fitness_mat), -z_min)
