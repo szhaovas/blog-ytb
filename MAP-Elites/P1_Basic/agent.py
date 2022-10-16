@@ -17,7 +17,7 @@ class Agent:
     def warmup(self, nsteps):
         for i in range(nsteps):
             rand_idv = Individual.random_init(self.num_joints)
-            bds, fitness = Individual.eval(rand_idv, self.env)
+            bds, fitness = Individual.eval(rand_idv, self.env, self.random_seed)
 
             print(f'Warmup Iteration: {i}; Fitness: {fitness}')
 
@@ -27,11 +27,9 @@ class Agent:
     def evolve(self, nsteps):
         for i in range(nsteps):
             rand_idv = self.archive.sample()
-            while rand_idv is None:
-                rand_idv = self.archive.sample()
             new_idv = Individual.mutate(rand_idv, self.sigma1)
 
-            bds, fitness = Individual.eval(new_idv, self.env)
+            bds, fitness = Individual.eval(new_idv, self.env, self.random_seed)
 
             print(f'Evolve Iteration: {i}; Fitness: {fitness}')
 
@@ -41,12 +39,13 @@ class Agent:
     def render_best(self):
         best_idv = self.archive.find_best()
         env = gym.make(self.env_id, render=True)
-        env.seed(self.random_seed)
         env.reset()
-        Individual.eval(best_idv, env)
+        env.seed(self.random_seed)
+        Individual.eval(best_idv, env, self.random_seed)
         env.close()
         Archive.visualize(self.archive)
-        print(f'Best Fitness: {best_idv.fitness}')
+        print(f'Best fitness: {best_idv.fitness}')
+        print(f'Cells discovered: {len([*self.archive.archive.keys()])}')
 
 if __name__ == '__main__':
     archive = Archive([(0, 1, 0.1)] * 2)

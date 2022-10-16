@@ -10,8 +10,11 @@ def discretize(bd, grid):
 class Archive:
     '''
     dims: [(dim1_low, dim1_high, dim1_step) * len(dims)]
+
+    priority_buffer_alpha: how strongly to prefer sampling high fitness
+        individuals (range is [0,1] where 0 means fair sampling)
     '''
-    def __init__(self, dims):
+    def __init__(self, dims, priority_buffer_alpha=0.6):
         self.dims = [np.arange(d[0], d[1], d[2]) for d in dims]
         self.archive = {}
 
@@ -23,8 +26,8 @@ class Archive:
             individual.fitness > self.archive[individual].fitness:
             self.archive[individual] = individual
 
-    def sample(self):
-        return np.random.choice(list(self.archive.values()))
+    def sample(self, batch_size):
+        return np.random.choice(list(self.archive.values()), batch_size)
 
     def find_best(self):
         max_fitness = float('-inf')
@@ -57,7 +60,6 @@ class Archive:
 
         plt.show()
 
-    #######################################
     @classmethod
     def from_pickle(cls, filename):
         try:
@@ -71,4 +73,3 @@ class Archive:
 
     def save(self, filename):
         pickle.dump(self, open(filename, 'wb'))
-    #######################################
