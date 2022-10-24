@@ -100,20 +100,29 @@ class Agent:
         print(f'Cells discovered: {len([*self.archive.archive.keys()])}')
         print(f'Restarts: {self.restarts}')
 
+        print('Histogram:')
+        individuals = [i.fitness for i in [*self.archive.archive.values()]]
+        bins, itvls = np.histogram(individuals)
+        hist_dict = {}
+        for i in range(len(bins)):
+            itvl = f'{itvls[i]}~{itvls[i+1]}'
+            hist_dict[itvl] = bins[i]
+        print('\n'.join(f'{key}: {value}' for key, value in hist_dict.items()))
+
 if __name__ == '__main__':
     '''use this if train from scratch
     '''
-    archive = Archive([(0, 1, 0.05)] * 4)
-    num_cores = 50
-    agent = Agent(archive, num_cores)
-    agent.warmup(50)
-    agent.evolve(1000)
-    agent.render_best()
+    # archive = Archive([(0, 1, 0.05)] * 4)
+    # num_cores = 50
+    # agent = Agent(archive, num_cores)
+    # agent.warmup(50)
+    # agent.evolve(1000)
+    # agent.render_best()
 
     '''use this if resume from previously trained archive
     '''
-    # archive = Archive.from_pickle('QDAntBulletEnv-v0_1000.p')
-    # num_cores = 50
-    # agent = Agent(archive, num_cores)
-    # agent.evolve(1000)
-    # agent.render_best()
+    archive = Archive.from_pickle('QDAntBulletEnv-v0_1000.p')
+    num_cores = 50
+    agent = Agent(archive, num_cores)
+    agent.evolve(1000)
+    agent.render_best()
