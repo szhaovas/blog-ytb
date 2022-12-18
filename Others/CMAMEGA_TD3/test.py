@@ -407,17 +407,17 @@ class Agent:
 if __name__ == '__main__':
     '''use this if train from scratch
     '''
-    # archive = Archive([(0, 1, 0.05)] * 4)
-    # num_cores = 50
-    # agent = Agent(archive, num_cores)
-    # agent.warmup(50)
-    # agent.evolve(1000)
-    # agent.render_best()
-    # agent.save()
+    archive = Archive([(0, 1, 0.05)] * 4)
+    num_cores = 50
+    agent = Agent(archive, num_cores)
+    agent.warmup(50)
+    agent.evolve(1000)
+    agent.render_best()
+    agent.save()
 
     '''use this if resume from previously trained archive
     '''
-    agent = Agent.from_pickle('QDAntBulletEnv-v0', 1000)
+    # agent = Agent.from_pickle('QDAntBulletEnv-v0', 1000)
     # agent.evolve(1000)
-    agent.render_best()
+    # agent.render_best()
     # agent.save()
