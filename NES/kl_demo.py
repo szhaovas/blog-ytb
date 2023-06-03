@@ -4,7 +4,7 @@ from scipy.stats import norm
 from matplotlib.widgets import Slider
   
 x = np.linspace(-40, 40, 100)
-n_samples = 5
+n_samples = 4
 sample_x = np.linspace(-20, 20, n_samples)
 fig, ax = plt.subplots()
 fig.subplots_adjust(bottom=0.2)
