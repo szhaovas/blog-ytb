@@ -68,6 +68,20 @@ def update_plot(mean, tril, samples):
 def get_fitness(samples): 
     return [img[max(min(int(s[1]),50),0), max(min(int(s[0]),50),0)] for s in samples]
 
+def calc_grad_analytical(m, t, samples, fitnesses):
+    mean = m.numpy()
+    cov = t.numpy() @ t.numpy().T
+    grad_mean, grad_cov = np.zeros((2,)), np.zeros((2, 2))
+    cov_inv = np.linalg.inv(cov)
+    for s, f in zip(samples, fitnesses):
+        diff = (np.array(s) - mean)[:, None]
+        grad_mean += (cov_inv @ diff * f).flatten()
+        grad_cov += (-1/2 * cov_inv + 1/2 * cov_inv @ diff @ diff.T @ cov_inv) * f
+    grad_mean /= λ
+    grad_cov /= λ
+
+    return grad_mean, grad_cov
+
 mean = tf.Variable([15, 25], dtype=np.float32)
 tril = tf.Variable(np.eye(2) * 2, dtype=np.float32)
 mvn = tfp.distributions.MultivariateNormalTriL(loc=mean, scale_tril=tril)
@@ -81,5 +95,7 @@ while True:
     with tf.GradientTape(persistent=True) as tape:
         loss = -tf.reduce_mean(mvn.log_prob(samples) * fitnesses)
     gradients = tape.gradient(loss, [mean, tril])
+    grad_mean, grad_cov = calc_grad_analytical(mean, tril, samples, fitnesses)
+    import pdb; pdb.set_trace()
     update_plot(mean, tril, samples)
     optimizer.apply_gradients(zip(gradients, [mean, tril]))
