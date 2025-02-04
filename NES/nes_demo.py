@@ -99,7 +99,7 @@ class EG_Gaussian:
         # Checks ask() has been called
         assert not self.prev_samples is None
 
-        # Implements Algorithm 2 from the NES paper (see <https://arxiv.org/abs/1106.4487>)
+        # Implements Algorithm 3 from the NES paper (see <https://arxiv.org/abs/1106.4487>)
         #   ...except we update tril=cholesky(cov) instead of cov itself
         cov_inv = np.linalg.inv(self.tril @ self.tril.T)
         diff_from_mean = self.prev_samples - self.mean
@@ -116,8 +116,38 @@ class EG_Gaussian:
                 + cov_inv @ diff @ diff.T @ cov_inv @ self.tril
             )
 
-        grad_mean = np.mean(score_mean * objs[:, None], axis=0)
-        grad_tril = np.mean(score_tril * objs[:, None, None], axis=0)
+        # Concatenates the mean and cov gradients for each sample to get all gradients of shape (100, 2+4-1)
+        #   -1 because the upper-right entry in score_tril is always set to 0
+        score_all = np.hstack(
+            (
+                score_mean,
+                score_tril[
+                    :,
+                    np.tril_indices(self.sol_dim)[0],
+                    np.tril_indices(self.sol_dim)[1],
+                ],
+            )
+        )
+
+        grad_all = np.mean(score_all * objs[:, None], axis=0)
+
+        # Computes empirical Fisher matrix from all gradients
+        # FIXME: Probably can be rewritten into matrix operations...
+        fisher_matrix = np.empty(
+            (self.batch_size, score_all.shape[-1], score_all.shape[-1]),
+            dtype=float,
+        )
+        for i, row in enumerate(score_all):
+            row = row[:, None]
+            fisher_matrix[i] = row @ row.T
+        fisher_matrix = np.mean(fisher_matrix, axis=0)
+
+        # "Divide" gradients by Fisher matrix
+        #   (kinda like divide gradients by their variances)
+        grad_all = np.linalg.inv(fisher_matrix) @ grad_all
+        grad_mean = grad_all[:2]
+        grad_tril = np.zeros((self.sol_dim, self.sol_dim), dtype=float)
+        grad_tril[np.tril_indices(self.sol_dim)] = grad_all[2:]
 
         self.mean += self.eta * grad_mean
         self.tril += self.eta * grad_tril
@@ -158,7 +188,6 @@ if __name__ == "__main__":
             scaled_mean = (eg.mean.copy() - x_min) / (x_max - x_min) * fig_res
             scaled_samples = (samples - x_min) / (x_max - x_min) * fig_res
 
-            # Get cov = tril @ tril.T
             cov = eg.tril @ eg.tril.T
 
             ax.imshow(img)

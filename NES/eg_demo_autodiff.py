@@ -1,36 +1,48 @@
 import numpy as np
+from itertools import product
+import torch
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Ellipse
 import matplotlib.transforms as transforms
-import tensorflow as tf
-import tensorflow_probability as tfp
 
-λ = 100
-η = 0.8
+x_min = -5
+x_max = 5
+fig_res = 50
 
-# canvas
-x = np.linspace(-4, 2, 51)
-y = np.linspace(-4, 2, 51)
-xx, yy = np.meshgrid(x, y)
-img = -(np.abs(xx - 1) + np.abs(yy - 1))
 
-# plot setup
-fig,ax = plt.subplots(1)
-ax.set_aspect('equal')
-ax.axes.xaxis.set_visible(False)
-ax.axes.yaxis.set_visible(False)
+def objective_function(x1, x2):
+    """
+    Implements Rastrigin function
+    """
+    # This value controls how "rugged" the objective landscape is
+    # Make this value larger to make the optimization problem more difficult
+    A = 1
+    shift = np.array([4, -4])
 
-'''
-Adapted from https://matplotlib.org/stable/gallery/statistics/confidence_ellipse.html
-'''
-def confidence_ellipse(mean, cov, ax, n_std=3.0, facecolor='none', **kwargs):
-    pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
+    displacement = np.stack((x1, x2), axis=1) - shift
+    sum_terms = np.square(displacement) - A * np.cos(2 * np.pi * displacement)
+
+    return -(2 * A + np.sum(sum_terms, axis=1))
+
+
+def confidence_ellipse(
+    scaled_mean, cov, ax, n_std=3.0, facecolor="none", **kwargs
+):
+    """
+    Adapted from https://matplotlib.org/stable/gallery/statistics/confidence_ellipse.html
+    """
+    pearson = cov[0, 1] / np.sqrt(cov[0, 0] * cov[1, 1])
     # Using a special case to obtain the eigenvalues of this
     # two-dimensionl dataset.
     ell_radius_x = np.sqrt(1 + pearson)
     ell_radius_y = np.sqrt(1 - pearson)
-    ellipse = Ellipse((0, 0), width=ell_radius_x * 2, height=ell_radius_y * 2,
-                      facecolor=facecolor, **kwargs)
+    ellipse = Ellipse(
+        (0, 0),
+        width=ell_radius_x * 2,
+        height=ell_radius_y * 2,
+        facecolor=facecolor,
+        **kwargs
+    )
 
     # Calculating the stdandard deviation of x from
     # the squareroot of the variance and multiplying
@@ -40,62 +52,133 @@ def confidence_ellipse(mean, cov, ax, n_std=3.0, facecolor='none', **kwargs):
     # calculating the stdandard deviation of y ...
     scale_y = np.sqrt(cov[1, 1]) * n_std
 
-    transf = transforms.Affine2D() \
-        .rotate_deg(45) \
-        .scale(scale_x, scale_y) \
-        .translate(mean[0], mean[1])
+    transf = (
+        transforms.Affine2D()
+        .rotate_deg(45)
+        .scale(scale_x, scale_y)
+        .translate(scaled_mean[0], scaled_mean[1])
+    )
 
     ellipse.set_transform(transf + ax.transData)
     return ax.add_patch(ellipse)
 
-def update_plot(mean, tril, samples):
-    ax.imshow(img)
-    for pair in samples:
-        ax.add_patch(Circle((pair[0],pair[1]),0.5,color='yellow'))
-    
-    tril_np = tril.numpy()
-    cov = tril_np @ tril_np.T
-    confidence_ellipse(
-        mean=mean,
-        cov=cov,
-        ax=ax, n_std=4.0, edgecolor='red'
+
+class EG_Gaussian_Autodiff:
+    """
+    Follows a simple ask-tell interface. Here's the general workflow:
+    1. Call ask() to get batch_size samples from the Gaussian distribution maintained by EG
+    2. Get the objective values `objs` of the samples
+    3. Call tell(objs) to make EG update the Gaussian distribution to "favor" high objs in the future
+        - tell(objs) must be called after ask() so that EG knows the samples associated with `objs`
+    """
+
+    def __init__(self, init_mean, init_cov, eta, batch_size=100, seed=42):
+        # Sets random seed to ensure reproducibility
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+
+        assert init_mean.ndim == 1
+        self.sol_dim = init_mean.size
+        self.mean = torch.tensor(init_mean, dtype=float, requires_grad=True)
+
+        # Maintains and updates a lower-triangular matrix and computes 'cov = tril @ tril.T' to make sure it is PSD
+        self.tril = torch.tensor(
+            np.linalg.cholesky(init_cov).astype(float), requires_grad=True
+        )
+        assert self.tril.shape == (self.sol_dim, self.sol_dim)
+
+        self.eta = eta
+
+        # Creates a MultivariateNormal with the current mean and tril
+        self.dist = torch.distributions.MultivariateNormal(
+            loc=self.mean, covariance_matrix=self.tril @ self.tril.T
+        )
+
+        self.batch_size = batch_size
+        self.prev_samples = None
+
+        self.optimizer = torch.optim.Adam([self.mean, self.tril], lr=eta)
+
+    def ask(self):
+        # Remembers which solutions are sampled for later tell() update
+        self.prev_samples = (
+            self.dist.sample((self.batch_size,)).detach().numpy()
+        )
+        return self.prev_samples
+
+    def tell(self, objs):
+        # Checks ask() has been called
+        assert not self.prev_samples is None
+
+        # PyTorch stuff for computing mean and cov gradients automatically
+        self.optimizer.zero_grad()
+        log_probs = self.dist.log_prob(torch.Tensor(self.prev_samples))
+        loss = -torch.mean(log_probs * torch.Tensor(objs))
+        loss.backward()
+        self.optimizer.step()
+
+        # Recreates MultivariateNormal with updated mean and tril
+        self.dist = torch.distributions.MultivariateNormal(
+            loc=self.mean, covariance_matrix=self.tril @ self.tril.T
+        )
+        # Resets solution memory
+        self.prev_samples = None
+
+
+if __name__ == "__main__":
+    # canvas
+    x1 = np.linspace(x_min, x_max, fig_res)
+    x2 = np.linspace(x_min, x_max, fig_res)
+    comb = np.array(list(product(x1, x2)))
+    img = (
+        objective_function(comb[:, 0], comb[:, 1]).reshape((fig_res, fig_res)).T
     )
-    plt.draw()
-    plt.pause(0.001)
-    input()
-    plt.cla()
 
-def get_fitness(samples): 
-    return [img[max(min(int(s[1]),50),0), max(min(int(s[0]),50),0)] for s in samples]
+    # plot setup
+    fig, ax = plt.subplots(1)
+    ax.set_aspect("equal")
+    ax.axes.xaxis.set_visible(False)
+    ax.axes.yaxis.set_visible(False)
 
-def calc_grad_analytical(m, t, samples, fitnesses):
-    mean = m.numpy()
-    cov = t.numpy() @ t.numpy().T
-    grad_mean, grad_cov = np.zeros((2,)), np.zeros((2, 2))
-    cov_inv = np.linalg.inv(cov)
-    for s, f in zip(samples, fitnesses):
-        diff = (np.array(s) - mean)[:, None]
-        grad_mean += (cov_inv @ diff * f).flatten()
-        grad_cov += (-1/2 * cov_inv + 1/2 * cov_inv @ diff @ diff.T @ cov_inv) * f
-    grad_mean /= λ
-    grad_cov /= λ
+    # main loop
+    eg = EG_Gaussian_Autodiff(
+        init_mean=np.array([-4, 0]),
+        init_cov=np.array([[2, 0], [0, 2]]),
+        eta=0.1,
+        batch_size=50,
+    )
+    try:
+        while True:
+            samples = eg.ask()
+            objs = objective_function(x1=samples[:, 0], x2=samples[:, 1])
+            eg.tell(objs=objs)
 
-    return grad_mean, grad_cov
+            # imshow uses coordinates ranging [0, fig_res]
+            scaled_mean = (
+                (eg.mean.detach().numpy() - x_min) / (x_max - x_min) * fig_res
+            )
+            scaled_samples = (samples - x_min) / (x_max - x_min) * fig_res
 
-mean = tf.Variable([15, 25], dtype=np.float32)
-tril = tf.Variable(np.eye(2) * 2, dtype=np.float32)
-mvn = tfp.distributions.MultivariateNormalTriL(loc=mean, scale_tril=tril)
-optimizer = tf.optimizers.Adam(learning_rate=η)
-# optimizer = tf.keras.optimizers.SGD(learning_rate=η)
-while True:
-    samples = mvn.sample(λ)
-    # This step is needed to overcome a bug with GradientTape, see issue https://github.com/tensorflow/probability/issues/999
-    samples = tf.identity(samples)
-    fitnesses = get_fitness(samples)
-    with tf.GradientTape(persistent=True) as tape:
-        loss = -tf.reduce_mean(mvn.log_prob(samples) * fitnesses)
-    gradients = tape.gradient(loss, [mean, tril])
-    grad_mean, grad_cov = calc_grad_analytical(mean, tril, samples, fitnesses)
-    import pdb; pdb.set_trace()
-    update_plot(mean, tril, samples)
-    optimizer.apply_gradients(zip(gradients, [mean, tril]))
+            # Get cov = tril @ tril.T
+            tril = eg.tril.detach().numpy()
+            cov = tril @ tril.T
+
+            ax.imshow(img)
+
+            for pair in scaled_samples:
+                ax.add_patch(Circle((pair[0], pair[1]), 0.5, color="yellow"))
+
+            confidence_ellipse(
+                scaled_mean=scaled_mean,
+                cov=cov,
+                ax=ax,
+                n_std=4.0,
+                edgecolor="red",
+            )
+            plt.draw()
+            plt.pause(0.1)
+            plt.cla()
+            print(np.mean(objs))
+
+    except KeyboardInterrupt:
+        quit()
