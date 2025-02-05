@@ -149,8 +149,16 @@ class EG_Gaussian:
         grad_tril = np.zeros((self.sol_dim, self.sol_dim), dtype=float)
         grad_tril[np.tril_indices(self.sol_dim)] = grad_all[2:]
 
+        old_mean = self.mean.copy()
+        old_cov = self.tril @ self.tril.T
+
         self.mean += self.eta * grad_mean
         self.tril += self.eta * grad_tril
+
+        new_cov = self.tril @ self.tril.T
+
+        print(f"mean_diff:\n{self.mean - old_mean}".replace("\n", "\n\t"))
+        print(f"cov_diff:\n{new_cov - old_cov}".replace("\n", "\n\t"))
 
         # Resets solution memory
         self.prev_samples = None
@@ -168,8 +176,10 @@ if __name__ == "__main__":
     # plot setup
     fig, ax = plt.subplots(1)
     ax.set_aspect("equal")
-    ax.axes.xaxis.set_visible(False)
-    ax.axes.yaxis.set_visible(False)
+    plt.xlabel(rf"$x_1$")
+    plt.xticks([0, fig_res - 1], [x_min, x_max])
+    plt.ylabel(rf"$x_2$")
+    plt.yticks([0, fig_res - 1], [x_min, x_max])
 
     # main loop
     eg = EG_Gaussian(
@@ -179,10 +189,10 @@ if __name__ == "__main__":
         batch_size=50,
     )
     try:
+        itr = 0
         while True:
             samples = eg.ask()
             objs = objective_function(x1=samples[:, 0], x2=samples[:, 1])
-            eg.tell(objs=objs)
 
             # imshow uses coordinates ranging [0, fig_res]
             scaled_mean = (eg.mean.copy() - x_min) / (x_max - x_min) * fig_res
@@ -191,6 +201,11 @@ if __name__ == "__main__":
             cov = eg.tril @ eg.tril.T
 
             ax.imshow(img)
+            ax.set_aspect("equal")
+            plt.xlabel(rf"$x_1$")
+            plt.xticks([0, fig_res - 1], [x_min, x_max])
+            plt.ylabel(rf"$x_2$")
+            plt.yticks([0, fig_res - 1], [x_min, x_max])
 
             for pair in scaled_samples:
                 ax.add_patch(Circle((pair[0], pair[1]), 0.5, color="yellow"))
@@ -205,7 +220,11 @@ if __name__ == "__main__":
             plt.draw()
             plt.pause(0.1)
             plt.cla()
-            print(f"Avg. obj: {np.mean(objs)}")
+            input(f"\nItr {itr}; press Enter to step\n")
+            print(f"Avg. obj:\n\t {np.mean(objs)}")
+
+            eg.tell(objs=objs)
+            itr += 1
 
     except KeyboardInterrupt:
         quit()

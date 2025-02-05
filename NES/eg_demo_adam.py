@@ -41,7 +41,7 @@ def confidence_ellipse(
         width=ell_radius_x * 2,
         height=ell_radius_y * 2,
         facecolor=facecolor,
-        **kwargs
+        **kwargs,
     )
 
     # Calculating the stdandard deviation of x from
@@ -137,8 +137,10 @@ if __name__ == "__main__":
     # plot setup
     fig, ax = plt.subplots(1)
     ax.set_aspect("equal")
-    ax.axes.xaxis.set_visible(False)
-    ax.axes.yaxis.set_visible(False)
+    plt.xlabel(rf"$x_1$")
+    plt.xticks([0, fig_res - 1], [x_min, x_max])
+    plt.ylabel(rf"$x_2$")
+    plt.yticks([0, fig_res - 1], [x_min, x_max])
 
     # main loop
     eg = EG_Gaussian_Autodiff(
@@ -148,10 +150,10 @@ if __name__ == "__main__":
         batch_size=50,
     )
     try:
+        itr = 0
         while True:
             samples = eg.ask()
             objs = objective_function(x1=samples[:, 0], x2=samples[:, 1])
-            eg.tell(objs=objs)
 
             # imshow uses coordinates ranging [0, fig_res]
             scaled_mean = (
@@ -164,6 +166,11 @@ if __name__ == "__main__":
             cov = tril @ tril.T
 
             ax.imshow(img)
+            ax.set_aspect("equal")
+            plt.xlabel(rf"$x_1$")
+            plt.xticks([0, fig_res - 1], [x_min, x_max])
+            plt.ylabel(rf"$x_2$")
+            plt.yticks([0, fig_res - 1], [x_min, x_max])
 
             for pair in scaled_samples:
                 ax.add_patch(Circle((pair[0], pair[1]), 0.5, color="yellow"))
@@ -178,7 +185,11 @@ if __name__ == "__main__":
             plt.draw()
             plt.pause(0.1)
             plt.cla()
+            input(f"\nItr {itr}; press Enter to step\n")
             print(np.mean(objs))
+
+            eg.tell(objs=objs)
+            itr += 1
 
     except KeyboardInterrupt:
         quit()
